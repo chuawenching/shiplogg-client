@@ -1,0 +1,134 @@
+#!/bin/sh
+# shiplogg post-commit hook
+# https://github.com/chuawenching/shiplogg-client  (MIT)
+#
+# Records the commit you just made to your shiplogg build log. Needs only
+# POSIX sh, git and curl. Never fails the commit: any error here exits 0.
+#
+# Sends: commit subject, SHA, author date, the full commit message (so the
+# server can read Co-Authored-By trailers), and the GitHub commit URL when
+# origin is a GitHub remote. Never sends a diff or file contents.
+#
+# Configuration, in order of precedence:
+#   $SHIPLOGG_TOKEN, $SHIPLOGG_PROJECT   environment
+#   .shiplogg in the repo root           token=slg_...   project=my-app
+#   $SHIPLOGG_URL                        defaults to https://shiplogg.com
+#
+# Skips merge commits and any commit whose message contains [skip shiplogg].
+
+main() {
+  command -v git  >/dev/null 2>&1 || return 0
+  command -v curl >/dev/null 2>&1 || { fail "curl not found"; return 0; }
+
+  # Merge commits have a second parent.
+  git rev-parse -q --verify 'HEAD^2' >/dev/null 2>&1 && return 0
+
+  message=$(git log -1 --format=%B HEAD 2>/dev/null) || return 0
+  printf '%s' "$message" | grep -qiF '[skip shiplogg]' && return 0
+
+  sha=$(git rev-parse HEAD 2>/dev/null)          || return 0
+  subject=$(git log -1 --format=%s HEAD 2>/dev/null) || return 0
+  shipped_at=$(git log -1 --format=%aI HEAD 2>/dev/null)
+  [ -n "$sha" ] && [ -n "$subject" ] || return 0
+
+  load_config
+
+  if [ -z "$SHIPLOGG_TOKEN" ]; then
+    fail "no token; set SHIPLOGG_TOKEN or add token=... to .shiplogg"
+    return 0
+  fi
+
+  url=${SHIPLOGG_URL:-https://shiplogg.com}
+  url=${url%/}/api/v1/entries
+  external_url=$(github_commit_url "$sha")
+
+  payload=$(build_payload)
+
+  # Fire and forget. curl runs in the background so the commit returns at
+  # once; a 5-second cap means an unreachable server costs at most that.
+  post_in_background </dev/null &
+}
+
+# Reads token and project from .shiplogg in the repo root. Environment
+# variables win over the file. The file is parsed, never sourced.
+load_config() {
+  root=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  file="$root/.shiplogg"
+  [ -f "$file" ] || return 0
+
+  [ -n "$SHIPLOGG_TOKEN" ]   || SHIPLOGG_TOKEN=$(config_value token)
+  [ -n "$SHIPLOGG_PROJECT" ] || SHIPLOGG_PROJECT=$(config_value project)
+
+  # A token in a tracked file ends up on GitHub. Warn, but still record.
+  if git ls-files --error-unmatch .shiplogg >/dev/null 2>&1; then
+    fail ".shiplogg is tracked by git; add it to .gitignore"
+  fi
+}
+
+# config_value KEY -> value of the first "KEY = value" line, quotes stripped.
+config_value() {
+  sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*//p" "$file" \
+    | head -n 1 \
+    | sed 's/[[:space:]]*$//; s/^"\(.*\)"$/\1/; s/^'"'"'\(.*\)'"'"'$/\1/'
+}
+
+# github_commit_url SHA -> https://github.com/owner/repo/commit/SHA, or "".
+# Handles git@github.com:o/r.git, https://github.com/o/r.git, ssh://git@github.com/o/r.
+github_commit_url() {
+  remote=$(git remote get-url origin 2>/dev/null) || return 0
+  case "$remote" in
+    *github.com[:/]*) ;;
+    *) return 0 ;;
+  esac
+  path=$(printf '%s' "$remote" | sed -E 's#^.*github\.com[:/]+##; s#\.git/?$##; s#/$##')
+  case "$path" in
+    */*) printf 'https://github.com/%s/commit/%s' "$path" "$1" ;;
+  esac
+}
+
+# JSON-escapes stdin as a string body (no surrounding quotes).
+json_escape() {
+  tr -d '\000-\010\013\014\016-\037' \
+    | awk 'BEGIN { ORS = "" }
+           { gsub(/\\/, "\\\\"); gsub(/"/, "\\\""); gsub(/\t/, "\\t"); gsub(/\r/, "\\r")
+             if (NR > 1) printf "\\n"
+             printf "%s", $0 }'
+}
+
+# One JSON object. Optional fields are omitted when empty.
+build_payload() {
+  printf '{"source":"git_hook"'
+  printf ',"body":"%s"'        "$(printf '%s' "$subject" | cut -c1-500 | json_escape)"
+  printf ',"external_id":"%s"' "$(printf '%s' "$sha" | json_escape)"
+  printf ',"commit_message":"%s"' "$(printf '%s' "$message" | json_escape)"
+  [ -n "$shipped_at" ]       && printf ',"shipped_at":"%s"'   "$(printf '%s' "$shipped_at" | json_escape)"
+  [ -n "$external_url" ]     && printf ',"external_url":"%s"' "$(printf '%s' "$external_url" | json_escape)"
+  [ -n "$SHIPLOGG_PROJECT" ] && printf ',"project":"%s"'      "$(printf '%s' "$SHIPLOGG_PROJECT" | json_escape)"
+  printf '}'
+}
+
+post_in_background() {
+  status=$(printf '%s' "$payload" | curl --silent \
+    --max-time 5 --connect-timeout 3 \
+    --output /dev/null --write-out '%{http_code}' \
+    --request POST "$url" \
+    --header "Authorization: Bearer $SHIPLOGG_TOKEN" \
+    --header 'Content-Type: application/json; charset=utf-8' \
+    --header 'Accept: application/json' \
+    --user-agent 'shiplogg-git-hook/0.1' \
+    --data-binary @- 2>/dev/null)
+
+  case "$status" in
+    2[0-9][0-9]) ;;
+    000|"")          fail "not recorded (could not reach $url)" ;;
+    [0-9][0-9][0-9]) fail "not recorded (HTTP $status)" ;;
+    *)               fail "not recorded" ;;
+  esac
+}
+
+fail() {
+  printf 'shiplogg: %s\n' "$1" >&2
+}
+
+main "$@"
+exit 0
