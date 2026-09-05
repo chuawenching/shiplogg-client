@@ -1,0 +1,3 @@
+#!/usr/bin/env ruby
+require "shiplogg"
+exit Shiplogg::CLI.run(ARGV)

@@ -48,6 +48,53 @@ If you already have a `post-commit` hook, add a line to it that calls this
 one. If your repo sets `core.hooksPath` (husky, lefthook), put the file in
 that directory instead of `.git/hooks`.
 
+## CLI
+
+The `shiplogg` gem wraps the hook and the API. Ruby 3.2 or newer, no
+dependencies beyond the standard library.
+
+```sh
+gem install shiplogg
+```
+
+Or from a checkout of this repo:
+
+```sh
+gem build shiplogg.gemspec && gem install --local shiplogg-*.gem
+```
+
+Then, from the root of the repo you want to log:
+
+```
+shiplogg init                       # token, project, .shiplogg, .gitignore, hook
+shiplogg log "shipped the landing page"
+shiplogg log "wired up auth" --by claude_code --url https://github.com/you/app/pull/12
+shiplogg status                     # your stats and public URL
+shiplogg hook install | uninstall   # just the post-commit hook
+```
+
+`init` reads the token from `$SHIPLOGG_TOKEN` or prompts for it without
+echo, checks it against `/api/v1/me`, lets you pick a project when you have
+more than one, writes `.shiplogg` (mode 600), adds it to `.gitignore`, and
+installs the hook. It is safe to run again; nothing is duplicated.
+
+`log` creates an entry with `source: cli`. The actor defaults to `human` and
+must be one of `human`, `claude_code`, `grok_build`, `grok_bot`, `openclaw`,
+`hermes`, `cursor`, `codex`, `other_agent`. It is for the ships that are not
+a commit: a deploy, a launch, a DNS change. Commits come in through the hook.
+
+`status` shows the self-reported split and, separately, the verified split
+once any of your commits have been checked against GitHub. The two are never
+merged.
+
+The hook the gem installs is the same `hooks/post-commit` file as above, so
+everything in "What gets sent" applies. A `post-commit` hook that the gem did
+not write is left alone: `install` prints the line to add to it, and
+`uninstall` refuses to delete it. Repos with `core.hooksPath` set (husky,
+lefthook) get the hook in that directory.
+
+Run the tests with `rake test`. HTTP is stubbed; nothing leaves the machine.
+
 ## What gets sent
 
 One JSON request per commit, to `POST https://shiplogg.com/api/v1/entries`,
