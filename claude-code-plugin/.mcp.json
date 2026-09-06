@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "shiplogg": {
+      "type": "http",
+      "url": "${SHIPLOGG_URL:-https://shiplogg.com}/mcp",
+      "headers": {
+        "Authorization": "Bearer ${SHIPLOGG_TOKEN}"
+      }
+    }
+  }
+}

@@ -95,6 +95,30 @@ lefthook) get the hook in that directory.
 
 Run the tests with `rake test`. HTTP is stubbed; nothing leaves the machine.
 
+## Claude Code plugin
+
+`claude-code-plugin/` is a Claude Code plugin. It declares the remote MCP
+server at `https://shiplogg.com/mcp` and ships a skill that tells Claude Code
+when to record a ship. Nothing runs locally.
+
+In Claude Code:
+
+```
+/plugin marketplace add chuawenching/shiplogg-client
+/plugin install shiplogg@shiplogg
+```
+
+Then export your token before starting Claude Code:
+
+```sh
+export SHIPLOGG_TOKEN=slg_...
+```
+
+Done. Claude Code calls `log_ship` after a deploy, a release, a launch or a
+milestone, with `actor: claude_code`. It does not log ordinary commits (the
+hook does that) and it does not post anywhere. See
+[`claude-code-plugin/README.md`](claude-code-plugin/README.md).
+
 ## What gets sent
 
 One JSON request per commit, to `POST https://shiplogg.com/api/v1/entries`,

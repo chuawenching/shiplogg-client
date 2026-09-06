@@ -1,0 +1,14 @@
+{
+  "name": "shiplogg",
+  "displayName": "shiplogg",
+  "version": "0.1.0",
+  "description": "Record your ships to your public build log at shiplogg.com, attributed to the agent that shipped them. Remote MCP only; nothing runs locally.",
+  "author": {
+    "name": "Chua Wen Ching",
+    "url": "https://github.com/chuawenching"
+  },
+  "homepage": "https://shiplogg.com",
+  "repository": "https://github.com/chuawenching/shiplogg-client",
+  "license": "MIT",
+  "keywords": ["shiplogg", "build-log", "ship-log", "provenance", "mcp"]
+}
