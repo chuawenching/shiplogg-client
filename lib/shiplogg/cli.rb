@@ -10,6 +10,7 @@ module Shiplogg
       usage: shiplogg <command> [options]
 
         init                      set up this repo: token, project, .shiplogg, git hook
+  init --agent codex        register the shiplogg plugin with Codex (/plugins)
         log "message" [--by ACTOR] [--url URL]
                                   record a ship (default actor: human)
         status                    your stats and public URL
@@ -61,8 +62,20 @@ module Shiplogg
       # --- commands -----------------------------------------------------------
 
       def init(argv)
-        OptionParser.new { |o| o.banner = "usage: shiplogg init" }.parse!(argv)
+        agent = nil
+        OptionParser.new do |o|
+          o.banner = "usage: shiplogg init [--agent codex]"
+          o.on("--agent AGENT", "register the plugin with an agent instead (codex)") { |v| agent = v }
+        end.parse!(argv)
 
+        case agent
+        when nil     then init_repo
+        when "codex" then init_codex
+        else return fail!("unknown agent '#{agent}'; supported: codex")
+        end
+      end
+
+      def init_repo
         token = config.token
         if token.nil?
           token = prompt_secret("shiplogg API token (from your dashboard): ")
@@ -85,6 +98,21 @@ module Shiplogg
 
         report_hook_install(hook_for_root.install)
         @out.puts "Logging as @#{me["handle"]} to #{me["log_url"]}"
+        0
+      end
+
+      def init_codex
+        codex = Codex.new(home: @env["HOME"] || Dir.home)
+        case codex.register
+        when :added     then @out.puts "Added shiplogg to #{codex.path}"
+        when :updated   then @out.puts "Updated the shiplogg entry in #{codex.path}"
+        when :unchanged then @out.puts "shiplogg is already in #{codex.path}"
+        end
+        @out.puts
+        @out.puts "Next, in Codex:"
+        @out.puts "  1. export SHIPLOGG_TOKEN=slg_...   (a token from your shiplogg dashboard)" unless config.token
+        @out.puts "  #{config.token ? 1 : 2}. run /plugins, open Personal plugins, install shiplogg"
+        @out.puts "     (or: codex plugin add shiplogg@#{Codex::MARKETPLACE_NAME})"
         0
       end
 

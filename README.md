@@ -71,6 +71,7 @@ shiplogg log "shipped the landing page"
 shiplogg log "wired up auth" --by claude_code --url https://github.com/you/app/pull/12
 shiplogg status                     # your stats and public URL
 shiplogg hook install | uninstall   # just the post-commit hook
+shiplogg init --agent codex         # register the Codex plugin, see below
 ```
 
 `init` reads the token from `$SHIPLOGG_TOKEN` or prompts for it without
@@ -118,6 +119,58 @@ Done. Claude Code calls `log_ship` after a deploy, a release, a launch or a
 milestone, with `actor: claude_code`. It does not log ordinary commits (the
 hook does that) and it does not post anywhere. See
 [`claude-code-plugin/README.md`](claude-code-plugin/README.md).
+
+## Codex plugin
+
+`plugins/shiplogg-codex/` is a [Codex plugin](https://developers.openai.com/plugins/build/plugins).
+It declares the remote MCP server at `https://shiplogg.com/mcp` (streamable
+HTTP, bearer token from `SHIPLOGG_TOKEN`) and ships a skill that tells Codex
+when to record a ship, with `actor: codex`. Nothing runs locally.
+
+Install in three steps:
+
+1. Add the marketplace. Either one line in your shell:
+
+   ```sh
+   codex plugin marketplace add chuawenching/shiplogg-client
+   ```
+
+   or, with the gem installed, let the CLI write the entry into your personal
+   marketplace at `~/.agents/plugins/marketplace.json`:
+
+   ```sh
+   shiplogg init --agent codex
+   ```
+
+2. Export your token before starting Codex:
+
+   ```sh
+   export SHIPLOGG_TOKEN=slg_...
+   ```
+
+3. In Codex, run `/plugins`, open the marketplace (`shiplogg` or `Personal
+   plugins`) and install shiplogg. Or from the shell:
+
+   ```sh
+   codex plugin add shiplogg@shiplogg      # after step 1a
+   codex plugin add shiplogg@personal      # after step 1b
+   ```
+
+`codex mcp list` then shows `shiplogg` as an enabled streamable HTTP server
+with `SHIPLOGG_TOKEN` as its bearer token variable, and the session has the
+`log_ship`, `list_recent` and `stats` tools. Codex calls `log_ship` after a
+deploy, a release, a launch or a milestone. It does not log ordinary commits
+(the hook does that) and it does not post anywhere. See
+[`plugins/shiplogg-codex/README.md`](plugins/shiplogg-codex/README.md).
+
+Anyone who opens this repo in Codex also sees the marketplace, because it is
+checked in at `.agents/plugins/marketplace.json`.
+
+The OpenAI-curated marketplace (the "Codex official" list) is a separate
+submission at [platform.openai.com/plugins](https://platform.openai.com/plugins).
+It requires a verified developer identity, domain verification of the MCP
+server, a privacy policy, and a set of test cases, and it is reviewed by
+OpenAI. shiplogg is not there yet.
 
 ## What gets sent
 

@@ -196,4 +196,30 @@ class CLITest < Minitest::Test
     assert_equal 1, code
     assert_includes err, "usage: shiplogg hook install|uninstall"
   end
+  def test_init_agent_codex_writes_personal_marketplace_and_prints_next_steps
+    Dir.mktmpdir do |home|
+      code, out, = run_cli(["init", "--agent", "codex"], env: { "HOME" => home }, client: client_with(FakeTransport.new))
+      assert_equal 0, code
+      assert File.exist?(File.join(home, ".agents", "plugins", "marketplace.json"))
+      assert_includes out, "Added shiplogg to"
+      assert_includes out, "export SHIPLOGG_TOKEN"
+      assert_includes out, "/plugins"
+      assert_includes out, "codex plugin add shiplogg@personal"
+    end
+  end
+
+  def test_init_agent_codex_skips_token_step_when_token_is_configured
+    Dir.mktmpdir do |home|
+      code, out, = run_cli(["init", "--agent", "codex"], env: { "HOME" => home, "SHIPLOGG_TOKEN" => "slg_x" }, client: client_with(FakeTransport.new))
+      assert_equal 0, code
+      refute_includes out, "export SHIPLOGG_TOKEN"
+      assert_includes out, "1. run /plugins"
+    end
+  end
+
+  def test_init_rejects_unknown_agent
+    code, _, err = run_cli(["init", "--agent", "skynet"], client: client_with(FakeTransport.new))
+    assert_equal 1, code
+    assert_includes err, "unknown agent 'skynet'"
+  end
 end

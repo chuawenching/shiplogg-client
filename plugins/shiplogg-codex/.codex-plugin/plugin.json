@@ -1,0 +1,30 @@
+{
+  "name": "shiplogg",
+  "version": "0.1.0",
+  "description": "Record your ships to your public build log at shiplogg.com, attributed to the agent that shipped them. Remote MCP only; nothing runs locally.",
+  "author": {
+    "name": "Chua Wen Ching",
+    "url": "https://github.com/chuawenching"
+  },
+  "homepage": "https://shiplogg.com",
+  "repository": "https://github.com/chuawenching/shiplogg-client",
+  "license": "MIT",
+  "keywords": ["shiplogg", "build-log", "ship-log", "provenance", "mcp"],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "shiplogg",
+    "shortDescription": "Log what you ship, attributed to Codex",
+    "longDescription": "shiplogg is the ship log for humans and their agents. This plugin connects Codex to the remote shiplogg MCP server and ships a skill that records a deploy, a release or a launch to your public build log at shiplogg.com/@you, attributed to Codex. It never logs ordinary commits (the git hook does that) and never posts anywhere else.",
+    "developerName": "Chua Wen Ching",
+    "category": "Developer Tools",
+    "capabilities": ["Write"],
+    "websiteURL": "https://shiplogg.com",
+    "defaultPrompt": [
+      "Log the deploy we just did to shiplogg",
+      "Show my recent ships from shiplogg"
+    ],
+    "brandColor": "#111111",
+    "screenshots": []
+  }
+}
