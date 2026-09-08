@@ -16,7 +16,7 @@ Gem::Specification.new do |spec|
     "bug_tracker_uri" => "#{spec.homepage}/issues"
   }
 
-  spec.files = Dir["lib/**/*.rb", "exe/*", "hooks/post-commit", "LICENSE", "README.md"]
+  spec.files = Dir["lib/**/*.rb", "exe/*", "hooks/post-commit", "plugins/shiplogg-antigravity/skills/shiplogg/SKILL.md", "LICENSE", "README.md"]
   spec.bindir        = "exe"
   spec.executables   = ["shiplogg"]
   spec.require_paths = ["lib"]

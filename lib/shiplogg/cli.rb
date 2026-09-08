@@ -10,11 +10,13 @@ module Shiplogg
       usage: shiplogg <command> [options]
 
         init                      set up this repo: token, project, .shiplogg, git hook
-  init --agent codex        register the shiplogg plugin with Codex (/plugins)
+        init --agent codex        register the shiplogg plugin with Codex (/plugins)
+        init --agent antigravity  MCP server + skill for Antigravity (IDE, CLI, app)
         log "message" [--by ACTOR] [--url URL]
                                   record a ship (default actor: human)
         status                    your stats and public URL
         hook install|uninstall    manage the post-commit hook
+        disclose antigravity      install the commit-attribution rule and skill for an agent
 
       actors: #{ACTORS.join(', ')}
       env:    SHIPLOGG_TOKEN, SHIPLOGG_PROJECT, SHIPLOGG_URL
@@ -43,6 +45,7 @@ module Shiplogg
       when "log"            then log(argv)
       when "status"         then status(argv)
       when "hook"           then hook(argv)
+      when "disclose"       then disclose(argv)
       when "version", "--version", "-v"
         @out.puts "shiplogg #{VERSION}"
         0
@@ -64,14 +67,15 @@ module Shiplogg
       def init(argv)
         agent = nil
         OptionParser.new do |o|
-          o.banner = "usage: shiplogg init [--agent codex]"
-          o.on("--agent AGENT", "register the plugin with an agent instead (codex)") { |v| agent = v }
+          o.banner = "usage: shiplogg init [--agent codex|antigravity]"
+          o.on("--agent AGENT", "register the plugin with an agent instead (codex, antigravity)") { |v| agent = v }
         end.parse!(argv)
 
         case agent
-        when nil     then init_repo
-        when "codex" then init_codex
-        else return fail!("unknown agent '#{agent}'; supported: codex")
+        when nil           then init_repo
+        when "codex"       then init_codex
+        when "antigravity" then init_antigravity
+        else return fail!("unknown agent '#{agent}'; supported: codex, antigravity")
         end
       end
 
@@ -114,6 +118,57 @@ module Shiplogg
         @out.puts "  #{config.token ? 1 : 2}. run /plugins, open Personal plugins, install shiplogg"
         @out.puts "     (or: codex plugin add shiplogg@#{Codex::MARKETPLACE_NAME})"
         0
+      end
+
+      def init_antigravity
+        token = config.token
+        if token.nil?
+          token = prompt_secret("shiplogg API token (from your dashboard): ")
+          return fail!("no token given") if token.empty?
+        else
+          @out.puts "Using token from #{@env["SHIPLOGG_TOKEN"] ? "SHIPLOGG_TOKEN" : Config::FILE}."
+        end
+
+        ag = antigravity
+        case ag.register_mcp(token)
+        when :added     then @out.puts "Added the shiplogg MCP server to #{ag.config_path}"
+        when :updated   then @out.puts "Updated the shiplogg MCP server in #{ag.config_path}"
+        when :unchanged then @out.puts "The shiplogg MCP server is already in #{ag.config_path}"
+        end
+        @out.puts "  That file now contains your token in clear text (Antigravity does not"
+        @out.puts "  read environment variables here). Its permissions are set to 600."
+
+        report_skill_install(ag)
+        @out.puts
+        @out.puts "Restart Antigravity (or run /mcp in the CLI) and the shiplogg tools appear."
+        0
+      end
+
+      def disclose(argv)
+        OptionParser.new { |o| o.banner = "usage: shiplogg disclose antigravity" }.parse!(argv)
+        agent = argv.shift
+        case agent
+        when "antigravity"
+          report_skill_install(antigravity)
+          0
+        when nil then fail!("which agent? usage: shiplogg disclose antigravity")
+        else fail!("unknown agent '#{agent}'; supported: antigravity")
+        end
+      end
+
+      def report_skill_install(ag)
+        case ag.install_skill
+        when :installed then @out.puts "Installed the shiplogg skill at #{ag.skill_path}"
+        when :updated   then @out.puts "Updated the shiplogg skill at #{ag.skill_path}"
+        when :unchanged then @out.puts "The shiplogg skill is already at #{ag.skill_path}"
+        end
+        case ag.install_rule
+        when :installed then @out.puts "Added the commit-attribution rule to #{ag.rules_path}"
+        when :updated   then @out.puts "Updated the commit-attribution rule in #{ag.rules_path}"
+        when :unchanged then @out.puts "The commit-attribution rule is already in #{ag.rules_path}"
+        end
+        @out.puts "  It tells Antigravity to end every commit with"
+        @out.puts "  #{Antigravity::TRAILER}"
       end
 
       def log(argv)
@@ -244,6 +299,10 @@ module Shiplogg
 
       def hook_for_root
         @hook ||= Hook.new(root)
+      end
+
+      def antigravity
+        @antigravity ||= Antigravity.new(home: @env["HOME"] || Dir.home, url: config.url)
       end
 
       def client(token: config.token)

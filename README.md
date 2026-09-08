@@ -72,6 +72,8 @@ shiplogg log "wired up auth" --by claude_code --url https://github.com/you/app/p
 shiplogg status                     # your stats and public URL
 shiplogg hook install | uninstall   # just the post-commit hook
 shiplogg init --agent codex         # register the Codex plugin, see below
+shiplogg init --agent antigravity   # MCP server + skill + rule for Antigravity, see below
+shiplogg disclose antigravity       # just the commit-attribution rule and skill
 ```
 
 `init` reads the token from `$SHIPLOGG_TOKEN` or prompts for it without
@@ -81,7 +83,7 @@ installs the hook. It is safe to run again; nothing is duplicated.
 
 `log` creates an entry with `source: cli`. The actor defaults to `human` and
 must be one of `human`, `claude_code`, `grok_build`, `grok_bot`, `openclaw`,
-`hermes`, `cursor`, `codex`, `other_agent`. It is for the ships that are not
+`hermes`, `cursor`, `codex`, `gemini`, `other_agent`. It is for the ships that are not
 a commit: a deploy, a launch, a DNS change. Commits come in through the hook.
 
 `status` shows the self-reported split and, separately, the verified split
@@ -172,6 +174,74 @@ It requires a verified developer identity, domain verification of the MCP
 server, a privacy policy, and a set of test cases, and it is reviewed by
 OpenAI. shiplogg is not there yet.
 
+## Antigravity
+
+Antigravity (the IDE, the `agy` CLI and the 2.0 app) has no plugin
+marketplace. It reads one shared config root, `~/.gemini/config/`, and one
+global rules file, `~/.gemini/GEMINI.md`. The gem writes to both. Two steps:
+
+1. With the gem installed, and your token in `SHIPLOGG_TOKEN`:
+
+   ```sh
+   shiplogg init --agent antigravity
+   ```
+
+   This writes three things and prints each path:
+
+   - The remote MCP server into `~/.gemini/config/mcp_config.json`, as
+     `serverUrl: https://shiplogg.com/mcp` with an `Authorization: Bearer`
+     header. **The token is written into that file in clear text**, because
+     Antigravity does not substitute environment variables in headers. The
+     file is set to mode 600. Other servers in the file are left alone.
+   - The shiplogg skill into `~/.gemini/config/skills/shiplogg/SKILL.md`.
+     Same content as the Claude Code skill, with `actor: gemini`.
+   - A commit-attribution rule into `~/.gemini/GEMINI.md`, between
+     `<!-- shiplogg:start -->` and `<!-- shiplogg:end -->` markers, so it
+     can be updated later without touching your own rules.
+
+2. Restart Antigravity, or run `/mcp` in the CLI. `shiplogg` shows up as a
+   connected HTTP server with `log_ship`, `list_recent` and `stats`.
+
+Run it again any time; nothing is duplicated.
+
+### Why the rule, and `shiplogg disclose`
+
+Claude Code and Codex add a `Co-Authored-By:` trailer to their commits on
+their own. Antigravity does not, so its commits look human. The rule tells
+it to end every commit it writes with:
+
+```
+Co-Authored-By: Antigravity <noreply@google.com>
+```
+
+The skill carries the same instruction, but Antigravity loads skills on
+demand (only the description is in context until the agent decides it needs
+the skill), and in testing a routine commit never triggered it. Rules in
+`~/.gemini/GEMINI.md` are always applied, and with the rule in place the
+trailer holds. Tested with `agy` 1.1.27:
+
+```
+$ git log -1 --format=%B
+Add hello2.txt
+
+Co-Authored-By: Antigravity <noreply@google.com>
+```
+
+The hook records that commit as `gemini`. Without the rule, the same test
+produced a bare `Add hello.txt with greeting from agy`, recorded as `human`.
+
+`shiplogg disclose antigravity` installs just the rule and the skill, for
+people who want the attribution without the MCP server. It is the first
+target of `disclose`; Cursor and the others follow.
+
+### Paths, verified
+
+Older tutorials say `~/.gemini/antigravity/skills/`, and the `agents-cli`
+installer writes to `~/.agents/skills/`. Antigravity reads neither. The
+current docs, the customization guide bundled inside the app, and the `agy`
+skill list all agree on `~/.gemini/config/skills/`. The MCP file must use
+`serverUrl`; `url` and `httpUrl` are rejected.
+
 ## What gets sent
 
 One JSON request per commit, to `POST https://shiplogg.com/api/v1/entries`,
@@ -210,7 +280,9 @@ Read the hook; it is about 130 lines.
 | Server | `SHIPLOGG_URL` | none | `https://shiplogg.com` |
 
 Environment variables win over the file. `SHIPLOGG_URL` exists so the test
-suite can point at a local server.
+suite can point at a local server. `init --agent antigravity` writes the
+`SHIPLOGG_URL` in effect into the MCP config, so run it without that
+variable set unless you mean it.
 
 ## License
 
