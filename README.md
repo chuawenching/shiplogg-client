@@ -249,13 +249,20 @@ authenticated with your token:
 
 | Field | Value |
 |---|---|
-| `body` | The commit subject line |
+| `source` | Always `git_hook` |
 | `external_id` | The commit SHA |
 | `shipped_at` | The author date |
-| `commit_message` | The full commit message, so the server can read `Co-Authored-By:` trailers |
+| `commit_message` | The `Co-Authored-By:` trailer lines of the message, and nothing else from it. Omitted when there are none |
+| `author_name`, `author_email` | The commit author, as git recorded it |
+| `committer_name`, `committer_email` | The committer, as git recorded it |
+| `branch` | The current branch name. Omitted on a detached HEAD |
 | `external_url` | The GitHub commit URL, only when `origin` is a GitHub remote |
-| `source` | Always `git_hook` |
 | `project` | Your project slug, only if configured |
+| `body` | The commit subject line, **only** with `subjects = true` in `.shiplogg` (or `SHIPLOGG_SUBJECTS=true`). Off by default |
+
+The server reads the trailers, the identity and the branch to work out who
+shipped the commit, and stores none of them. Without a subject the entry is
+shown as a dated mark with the short SHA.
 
 The same SHA is never recorded twice. Re-running the hook on a commit that is
 already logged is a no-op on the server.
@@ -264,12 +271,13 @@ already logged is a no-op on the server.
 
 - No diff. Not a single line of it.
 - No file contents, file names, or paths.
-- No branch names, tags, or remote URLs other than the derived GitHub commit link.
-- No author name or email. Your identity on shiplogg comes from the token, not the commit.
+- No commit message body, and no subject line unless you turn `subjects` on.
+  Only the `Co-Authored-By:` lines leave the machine.
+- No tags, and no remote URLs other than the derived GitHub commit link.
 - Nothing about commits that have not happened yet, and nothing about repos where the hook is not installed.
 
-Only the subject, the SHA, the date, and the message with its trailers.
-Read the hook; it is about 130 lines.
+Only the SHA, the date, the trailers, who authored and committed, and the
+branch. Read the hook; it is about 150 lines.
 
 ## Configuration reference
 
@@ -277,9 +285,12 @@ Read the hook; it is about 130 lines.
 |---|---|---|---|
 | API token | `SHIPLOGG_TOKEN` | `token` | none, required |
 | Project slug | `SHIPLOGG_PROJECT` | `project` | your first project |
+| Send subject lines | `SHIPLOGG_SUBJECTS` | `subjects` | `false` |
 | Server | `SHIPLOGG_URL` | none | `https://shiplogg.com` |
 
-Environment variables win over the file. `SHIPLOGG_URL` exists so the test
+Environment variables win over the file. `subjects` is read by the hook only;
+set it to exactly `true` to send the subject line of each commit as the
+entry body. Anything else, or no setting, keeps subjects on your machine. `SHIPLOGG_URL` exists so the test
 suite can point at a local server. `init --agent antigravity` writes the
 `SHIPLOGG_URL` in effect into the MCP config, so run it without that
 variable set unless you mean it.

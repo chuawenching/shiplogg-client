@@ -5,14 +5,17 @@
 # Records the commit you just made to your shiplogg build log. Needs only
 # POSIX sh, git and curl. Never fails the commit: any error here exits 0.
 #
-# Sends: commit subject, SHA, author date, the full commit message (so the
-# server can read Co-Authored-By trailers), and the GitHub commit URL when
-# origin is a GitHub remote. Never sends a diff or file contents.
+# Sends metadata, never content: the SHA, the author date, the Co-Authored-By
+# trailer lines of the commit message (and nothing else from the message),
+# the author and committer name and email, the branch name, and the GitHub
+# commit URL when origin is a GitHub remote. The subject line is sent only
+# when the repo opts in with subjects=true. Never sends a diff, a file path
+# or the message body under any setting.
 #
 # Configuration, in order of precedence:
-#   $SHIPLOGG_TOKEN, $SHIPLOGG_PROJECT   environment
-#   .shiplogg in the repo root           token=slg_...   project=my-app
-#   $SHIPLOGG_URL                        defaults to https://shiplogg.com
+#   $SHIPLOGG_TOKEN, $SHIPLOGG_PROJECT, $SHIPLOGG_SUBJECTS   environment
+#   .shiplogg in the repo root     token=slg_...  project=my-app  subjects=true
+#   $SHIPLOGG_URL                  defaults to https://shiplogg.com
 #
 # Skips merge commits and any commit whose message contains [skip shiplogg].
 
@@ -30,6 +33,18 @@ main() {
   subject=$(git log -1 --format=%s HEAD 2>/dev/null) || return 0
   shipped_at=$(git log -1 --format=%aI HEAD 2>/dev/null)
   [ -n "$sha" ] && [ -n "$subject" ] || return 0
+
+  # Only the trailer lines leave the machine. grep exits 1 when there are none.
+  trailers=$(printf '%s\n' "$message" | grep -i '^Co-Authored-By:')
+
+  identity=$(git log -1 --format=%an%n%ae%n%cn%n%ce HEAD 2>/dev/null)
+  author_name=$(printf '%s\n' "$identity" | sed -n 1p)
+  author_email=$(printf '%s\n' "$identity" | sed -n 2p)
+  committer_name=$(printf '%s\n' "$identity" | sed -n 3p)
+  committer_email=$(printf '%s\n' "$identity" | sed -n 4p)
+
+  # Empty on a detached HEAD, so the field is omitted.
+  branch=$(git symbolic-ref --short -q HEAD 2>/dev/null)
 
   load_config
 
@@ -56,8 +71,9 @@ load_config() {
   file="$root/.shiplogg"
   [ -f "$file" ] || return 0
 
-  [ -n "$SHIPLOGG_TOKEN" ]   || SHIPLOGG_TOKEN=$(config_value token)
-  [ -n "$SHIPLOGG_PROJECT" ] || SHIPLOGG_PROJECT=$(config_value project)
+  [ -n "$SHIPLOGG_TOKEN" ]    || SHIPLOGG_TOKEN=$(config_value token)
+  [ -n "$SHIPLOGG_PROJECT" ]  || SHIPLOGG_PROJECT=$(config_value project)
+  [ -n "$SHIPLOGG_SUBJECTS" ] || SHIPLOGG_SUBJECTS=$(config_value subjects)
 
   # A token in a tracked file ends up on GitHub. Warn, but still record.
   if git ls-files --error-unmatch .shiplogg >/dev/null 2>&1; then
@@ -95,15 +111,21 @@ json_escape() {
              printf "%s", $0 }'
 }
 
-# One JSON object. Optional fields are omitted when empty.
+# One JSON object. Optional fields are omitted when empty. The subject goes
+# only when the repo opted in; the message body never does.
 build_payload() {
   printf '{"source":"git_hook"'
-  printf ',"body":"%s"'        "$(printf '%s' "$subject" | cut -c1-500 | json_escape)"
   printf ',"external_id":"%s"' "$(printf '%s' "$sha" | json_escape)"
-  printf ',"commit_message":"%s"' "$(printf '%s' "$message" | json_escape)"
-  [ -n "$shipped_at" ]       && printf ',"shipped_at":"%s"'   "$(printf '%s' "$shipped_at" | json_escape)"
-  [ -n "$external_url" ]     && printf ',"external_url":"%s"' "$(printf '%s' "$external_url" | json_escape)"
-  [ -n "$SHIPLOGG_PROJECT" ] && printf ',"project":"%s"'      "$(printf '%s' "$SHIPLOGG_PROJECT" | json_escape)"
+  [ "$SHIPLOGG_SUBJECTS" = true ] && printf ',"body":"%s"' "$(printf '%s' "$subject" | cut -c1-500 | json_escape)"
+  [ -n "$trailers" ]         && printf ',"commit_message":"%s"'  "$(printf '%s' "$trailers" | json_escape)"
+  [ -n "$author_name" ]      && printf ',"author_name":"%s"'     "$(printf '%s' "$author_name" | json_escape)"
+  [ -n "$author_email" ]     && printf ',"author_email":"%s"'    "$(printf '%s' "$author_email" | json_escape)"
+  [ -n "$committer_name" ]   && printf ',"committer_name":"%s"'  "$(printf '%s' "$committer_name" | json_escape)"
+  [ -n "$committer_email" ]  && printf ',"committer_email":"%s"' "$(printf '%s' "$committer_email" | json_escape)"
+  [ -n "$branch" ]           && printf ',"branch":"%s"'          "$(printf '%s' "$branch" | json_escape)"
+  [ -n "$shipped_at" ]       && printf ',"shipped_at":"%s"'      "$(printf '%s' "$shipped_at" | json_escape)"
+  [ -n "$external_url" ]     && printf ',"external_url":"%s"'    "$(printf '%s' "$external_url" | json_escape)"
+  [ -n "$SHIPLOGG_PROJECT" ] && printf ',"project":"%s"'         "$(printf '%s' "$SHIPLOGG_PROJECT" | json_escape)"
   printf '}'
 }
 
